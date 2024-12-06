@@ -1,3 +1,4 @@
+import os
 import csv
 import sys
 import time
@@ -12,7 +13,7 @@ def read_sudoku_from_csv(filename):
                 if len(row) != 9:
                     raise ValueError(f"Each row must contain 9 cells, found row with {len(row)} cells.")
                 board.append([int(cell) for cell in row])
-            print('Initial Board:')
+            print(f'Initial Board from {filename}:')
             print_board(board)
         return board
     except FileNotFoundError:
@@ -27,15 +28,13 @@ def print_board(board):
     for i, row in enumerate(board):
         if i % 3 == 0 and i != 0:
             print("+---+---+---+---+---+---+---+---+---+")
-
         for j, cell in enumerate(row):
             if j % 3 == 0 and j != 0:
                 print(" |", end=" ")
-
             print(f" {cell if cell != 0 else '.'} ", end=" ")
-
         print()
     print("+---+---+---+---+---+---+---+---+---+")
+
 
 def is_safe(board, row, col, num):
     # Check the row and column
@@ -210,54 +209,83 @@ def solve_sudoku(board, method="backtracking", heuristic=None):
     return False  # Trigger backtracking
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python sudoku_solver.py <csv_file_path>")
+    current_directory = os.getcwd()
+    print(f"Current directory: {current_directory}")
+    difficulty_folders = [d for d in os.listdir(current_directory) if os.path.isdir(d)]
+
+    if not difficulty_folders:
+        print("No difficulty level folders found in the current directory.")
         sys.exit(1)
     
-    board = read_sudoku_from_csv(sys.argv[1])
+    print("\nAvailable difficulty levels (subdirectories):")
+    for idx, folder in enumerate(difficulty_folders, 1):
+        print(f"{idx}: {folder}")
 
-    # Ask the user for the solving method: backtracking or arc consistency (AC)
-    print("\nChoose the solving method:")
-    print("1: Backtracking")
-    print("2: Arc Consistency")
-    choice = input("Enter 1 or 2: ").strip()
-
-    if choice == "1":
-        method = "backtracking"
-    elif choice == "2":
-        method = "arc"
-    else:
-        print("Invalid choice. Defaulting to backtracking.")
-        method = "backtracking"
-
-    # Ask for the heuristic option
-    print("\nChoose the heuristic:")
-    print("1: No heuristic")
-    print("2: Degree heuristic")
-    print("3: MRV heuristic")
-    heuristic_choice = input("Enter 1, 2, or 3: ").strip()
-
-    if heuristic_choice == "1":
-        heuristic = "none"
-    elif heuristic_choice == "2":
-        heuristic = "Degree"
-    elif heuristic_choice == "3":
-        heuristic = "MRV"
-    else:
-        print("Invalid choice. Defaulting to no heuristic.")
-        heuristic = "none"
-
-    start_time = time.time()  # Start the timer
-    print("Solving the Sudoku puzzle...\n")
+    # Ask the user to choose a difficulty level
+    choice = input("\nEnter the number corresponding to the difficulty level: ").strip()
     
-    if solve_sudoku(board, method, heuristic):
-        print("Sudoku solved successfully:")
-        print_board(board)
-    else:
-        print("No solution exists for the Sudoku puzzle.")
+    if not choice.isdigit() or int(choice) not in range(1, len(difficulty_folders) + 1):
+        print("Invalid choice. Exiting program.")
+        sys.exit(1)
+
+    # Select the chosen folder
+    selected_folder = difficulty_folders[int(choice) - 1]
+    folder_path = os.path.join(current_directory, selected_folder)
+    print(f"Selected difficulty level: {selected_folder}")
+
+    csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+
+    if not csv_files:
+        print(f"No CSV files found in the folder {selected_folder}.")
+        sys.exit(1)
+
+    # Iterate through each CSV file in the folder
+    for filename in csv_files:
+        file_path = os.path.join(folder_path, filename)
+        board = read_sudoku_from_csv(file_path)
+
+        # Ask for the solving method: backtracking or arc consistency (AC)
+        print("\nChoose the solving method:")
+        print("1: Backtracking")
+        print("2: Arc Consistency")
+        choice = input("Enter 1 or 2: ").strip()
+
+        if choice == "1":
+            method = "backtracking"
+        elif choice == "2":
+            method = "arc"
+        else:
+            print("Invalid choice. Defaulting to backtracking.")
+            method = "backtracking"
+
+        # Ask for the heuristic option
+        print("\nChoose the heuristic:")
+        print("1: No heuristic")
+        print("2: Degree heuristic")
+        print("3: MRV heuristic")
+        heuristic_choice = input("Enter 1, 2, or 3: ").strip()
+
+        if heuristic_choice == "1":
+            heuristic = "none"
+        elif heuristic_choice == "2":
+            heuristic = "Degree"
+        elif heuristic_choice == "3":
+            heuristic = "MRV"
+        else:
+            print("Invalid choice. Defaulting to no heuristic.")
+            heuristic = "none"
+
+        start_time = time.time()  # Start the timer
+        print("Solving the Sudoku puzzle...\n")
     
-    end_time = time.time()  # End the timer
-    print(f"Time taken to solve the puzzle: {end_time - start_time:.4f} seconds.")
+        if solve_sudoku(board, method, heuristic):
+            print("Sudoku solved successfully:")
+            print_board(board)
+        else:
+            print("No solution exists for the Sudoku puzzle.")
+    
+        end_time = time.time()  # End the timer
+        print(f"Time taken to solve the puzzle: {end_time - start_time:.4f} seconds.")
 
 if __name__ == "__main__":
     main()
