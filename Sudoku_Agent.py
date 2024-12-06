@@ -190,7 +190,6 @@ def solve_sudoku(board, method="backtracking", heuristic=None):
     # Choose solving method based on the user input
     if method == "arc":
         if not ac(board):
-            print("No solution found after applying AC.")
             return False
 
     empty = find_empty_location(board, heuristic)
