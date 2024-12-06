@@ -53,102 +53,146 @@ def is_safe(board, row, col, num):
 
 def find_empty_location(board, heuristic=None):
     if heuristic == "Degree":
-        # Degree Heuristic: Find the cell involved in the most constraints (row, col, block)
-        max_constraints = -1
-        best_cell = None
-        for row in range(9):
-            for col in range(9):
-                if board[row][col] == 0:  # Find empty cells
-                    constraints = 0
-                    # Count constraints in the row
-                    constraints += sum(1 for i in range(9) if board[row][i] != 0)
-                    # Count constraints in the column
-                    constraints += sum(1 for i in range(9) if board[i][col] != 0)
-                    # Count constraints in the 3x3 subgrid
-                    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
-                    constraints += sum(1 for i in range(3) for j in range(3) 
-                                       if board[start_row + i][start_col + j] != 0)
-                    if constraints > max_constraints:
-                        max_constraints = constraints
-                        best_cell = (row, col)
-        return best_cell
+        return degree_heuristic(board)
+    elif heuristic == "MRV":
+        return mrv_heuristic(board)
     else:
-        # If no heuristic, just pick the first empty location
+        # If no heuristic, pick the first empty location
         for row in range(9):
             for col in range(9):
                 if board[row][col] == 0:
                     return (row, col)
     return None
 
-# Implementing the AC-3 algorithm for Arc Consistency
-def ac3(board):
-    # Set up the domains for each cell: 1-9 for each empty cell, else the fixed number
+def mrv_heuristic(board):
+    min_domain_size = float('inf')
+    selected_var = None
+    for row in range(9):
+        for col in range(9):
+            if board[row][col] == 0:  # Unassigned variable
+                domain_size = len(get_domain(board, row, col))
+                if domain_size < min_domain_size:
+                    min_domain_size = domain_size
+                    selected_var = (row, col)
+    return selected_var
+
+def degree_heuristic(board):
+    max_degree = -1
+    selected_var = None
+    for row in range(9):
+        for col in range(9):
+            if board[row][col] == 0:  # Unassigned variable
+                degree = count_constraints(board, row, col)
+                if degree > max_degree:
+                    max_degree = degree
+                    selected_var = (row, col)
+    return selected_var
+
+def count_constraints(board, row, col):
+    degree = 0
+    # Check row
+    for i in range(9):
+        if board[row][i] != 0:
+            degree += 1
+    # Check column
+    for i in range(9):
+        if board[i][col] != 0:
+            degree += 1
+    # Check block
+    block_row, block_col = (row // 3) * 3, (col // 3) * 3
+    for i in range(3):
+        for j in range(3):
+            if board[block_row + i][block_col + j] != 0:
+                degree += 1
+    return degree
+
+def get_domain(board, row, col):
+    domain = set(range(1, 10))
+    for i in range(9):
+        domain.discard(board[row][i])  # Row constraint
+        domain.discard(board[i][col])  # Column constraint
+
+    # Block constraint
+    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
+    for i in range(3):
+        for j in range(3):
+            domain.discard(board[start_row + i][start_col + j])
+
+    return domain
+
+def ac(board):
+    queue = []
+    rows, cols = len(board), len(board[0])
+
+    # Create initial domains from the board
     domains = {}
-    for row in range(9):
-        for col in range(9):
-            if board[row][col] == 0:  # Empty cell, initial domain is 1-9
-                domains[(row, col)] = set(range(1, 10))
-            else:  # Fixed number, domain is just that number (in a set)
-                domains[(row, col)] = {board[row][col]}
+    for r in range(rows):
+        for c in range(cols):
+            if board[r][c] == 0:
+                domains[(r, c)] = set(range(1, 10))  # Initialize domains with 1-9 for empty cells
+            else:
+                domains[(r, c)] = {board[r][c]}  # Set domain to the single value for filled cells
 
-    # Queue of arcs (variables to check)
-    queue = deque()
-
-    # Add all arcs (row, col) with their neighboring constraints (row, col)
-    for row in range(9):
-        for col in range(9):
-            if board[row][col] == 0:
-                neighbors = get_neighbors(row, col)
+    for r in range(rows):
+        for c in range(cols):
+            if board[r][c] == 0:
+                neighbors = get_neighbors(r, c, rows, cols)
                 for neighbor in neighbors:
-                    queue.append(((row, col), neighbor))
+                    queue.append(((r, c), neighbor))
 
-    # AC-3 algorithm
     while queue:
-        (x, y), (i, j) = queue.popleft()
-        
-        if revise(domains, x, y):
-            if len(domains[(x, y)]) == 0:
-                return False  # Failure, no solution
-            neighbors = get_neighbors(x, y)
+        (xi, yi) = queue.pop(0)
+        if revise(domains, xi, yi):
+            if len(domains[xi]) == 0:  # Domain is empty
+                return False
+            # Add neighboring arcs of xi to the queue
+            neighbors = get_neighbors(xi[0], xi[1], rows, cols)
             for neighbor in neighbors:
-                if neighbor != (i, j):
-                    queue.append(((x, y), neighbor))
+                if neighbor != yi:
+                    queue.append((neighbor, xi))
 
-    return True  # AC-3 succeeded
+    return True
 
-def revise(domains, x, y):
+def revise(domains, xi, yi):
     revised = False
-    # For each value in the domain of x, check if it has a consistent value in the domain of y
-    for value_x in list(domains[(x[0], x[1])]):
-        if not any(value_x != value_y for value_y in domains[(y[0], y[1])]):
-            domains[(x[0], x[1])].remove(value_x)
+    for x in list(domains[xi]):
+        if not any(is_consistent(x, y) for y in domains[yi]):
+            domains[xi].remove(x)  # Remove inconsistent value
             revised = True
     return revised
 
-def get_neighbors(row, col):
-    """Get all neighboring cells of (row, col) that aren't the same cell."""
-    neighbors = []
-    for i in range(9):
-        if i != row:
-            neighbors.append((i, col))  # Row neighbors
-        if i != col:
-            neighbors.append((row, i))  # Column neighbors
-    # Subgrid neighbors
-    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
-    for i in range(start_row, start_row + 3):
-        for j in range(start_col, start_col + 3):
-            if (i, j) != (row, col):
-                neighbors.append((i, j))
+def is_consistent(x, y):
+    # Consistency check: Values x and y are consistent if they are not equal
+    return x != y
+
+def get_neighbors(r, c, rows, cols):
+    # Get neighbors for a given cell (r, c)
+    neighbors = set()
+
+    # Row and column constraints
+    for i in range(cols):
+        if i != c:
+            neighbors.add((r, i))
+    for i in range(rows):
+        if i != r:
+            neighbors.add((i, c))
+
+    # 3x3 block constraints
+    block_r = r // 3 * 3
+    block_c = c // 3 * 3
+    for i in range(block_r, block_r + 3):
+        for j in range(block_c, block_c + 3):
+            if (i, j) != (r, c):
+                neighbors.add((i, j))  # Same 3x3 block
+
     return neighbors
 
 def solve_sudoku(board, method="backtracking", heuristic=None):
     # Choose solving method based on the user input
     if method == "arc":
-        print("\nApplying Arc Consistency (AC-3)...")
-        if not ac3(board):
-            print("No solution found after applying AC-3.")
+        if not ac(board):
+            print("No solution found after applying AC.")
             return False
-        print("Arc Consistency applied successfully.\n")
 
     empty = find_empty_location(board, heuristic)
     if not empty:
@@ -172,10 +216,10 @@ def main():
     
     board = read_sudoku_from_csv(sys.argv[1])
 
-    # Ask the user for the solving method: backtracking or arc consistency (AC-3)
+    # Ask the user for the solving method: backtracking or arc consistency (AC)
     print("\nChoose the solving method:")
     print("1: Backtracking")
-    print("2: Arc Consistency (AC-3)")
+    print("2: Arc Consistency")
     choice = input("Enter 1 or 2: ").strip()
 
     if choice == "1":
@@ -190,12 +234,15 @@ def main():
     print("\nChoose the heuristic:")
     print("1: No heuristic")
     print("2: Degree heuristic")
-    heuristic_choice = input("Enter 1 or 2: ").strip()
+    print("3: MRV heuristic")
+    heuristic_choice = input("Enter 1, 2, or 3: ").strip()
 
     if heuristic_choice == "1":
         heuristic = "none"
     elif heuristic_choice == "2":
         heuristic = "Degree"
+    elif heuristic_choice == "3":
+        heuristic = "MRV"
     else:
         print("Invalid choice. Defaulting to no heuristic.")
         heuristic = "none"
